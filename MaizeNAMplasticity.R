@@ -29,7 +29,7 @@ library("colorspace");
 library(RColorBrewer);
 library(tidyverse)
 
-source('sub_funcs_20200707_LTC.R');
+source('subfunctions/sub_funcs_20200707_LTC.R');
 
 print(sessionInfo())
 
@@ -80,11 +80,18 @@ ptt_ptr_file <- paste(exp_dir, nrow(env_meta_info_0), 'Envs_envParas_DAP',  sear
 # based on https://github.com/jmyu/CERIS_JGRA and https://github.com/LTibbs/PET_extraction
 PTT_PTR <- read.table(ptt_ptr_file, header = T , sep = "\t"); 
 
+# choose desired parameters:
+PTT_PTR <- PTT_PTR %>%
+  dplyr::select(-TMAX, -TMIN)
+
 # if want to exclude precip-based env variables:
 if(incl.precip=="no.precip") {
   PTT_PTR <- PTT_PTR %>%
     select(-PRECIP, -PET, -H20.balance)
 }
+
+# TO DO: add files to GitHub------------------------
+# Also: whatever "data.join" is that was then used to remove outliers; NAM.population.list, sub_funcs ...
 
 exp_traits_file <- paste(exp_dir, 'traits_ori_NAM', sep = ''); 
 exp_fnd_file <- paste(exp_dir, 'traits_ori_FND', sep='')
@@ -95,7 +102,7 @@ pop.table <- fread("NAM.population.list.txt", sep="\t", data.table=F)
 # Data pre-processing ---------------------------------------------------------
 
 # remove outliers
-  data.join <- fread() %>%
+  data.join <- fread("data/traits_ori_full") %>% # this is the full phenotype data compiled from publicly available sources, see paper
     filter(!is.na(ril_code)) %>%
     filter(ril_code != "") # remove entries that we don't know the genotype of
   # Now, using Aaron's Nature Plants paper on NAM as guide:
@@ -295,7 +302,7 @@ fwrite(out.wide %>% filter(ril_code %in% c("B73","HP301", pop.table$parent)), ex
     fnd_traits <-  read.table(exp_fnd_file, sep="\t", header=T, stringsAsFactors = F)
     
     # every time -- make exp_traits match genotype
-    mytaxa <- fread("NAM.GD.hidensity.matchY.txt", select=1)
+    mytaxa <- fread("data/NAM.matchY.txt")
     exp_traits <- exp_traits %>%
       filter(ril_code %in% mytaxa$Taxa)
     stopifnot(setdiff(mytaxa$Taxa, exp_traits$ril_code)==0)
@@ -463,12 +470,11 @@ fwrite(out.wide %>% filter(ril_code %in% c("B73","HP301", pop.table$parent)), ex
     #      which will give us the final pheno
     # 4. Repeat 50x
     
-    source("genomic_prediction_functions.R")
+    source("subfunctions/genomic_prediction_functions.R")
     
     # This is designed for 2 folds-- split 50/50 training/testing
     nfolds <- 2
     rep.num <- c(1:10) # what rep to run -- eventually, want 1:50
-    predict.type <- "within.pop" # set to within.pop or across.pop to predict either within each NAM pop or across the whole thing
     CERIS.done <- TRUE # use to determine if CERIS already run to prevent re-running it
     
     # make the folders for the .pop version (equivalent to .v4 in rrBLUP)
@@ -485,7 +491,7 @@ fwrite(out.wide %>% filter(ril_code %in% c("B73","HP301", pop.table$parent)), ex
     col_wdw <- 25;
     col_palette <- colorspace::diverge_hcl(col_wdw + 1, h = c(260, 0), c = 100, l = c(50, 90), power = 1) # this function makes a diverging color palette
     
-    print(paste0("FR-gBLUP 1 to 3 for the whole population, rrBLUP within families, with parameters: line.outlier.filter=", line.outlier.filter,
+    print(paste0("FR-gBLUP 1 to 3, with parameters: line.outlier.filter=", line.outlier.filter,
                  ", filter.less.than=",filter.less.than,", min.window.size=", min.window.size, ", last.FT=",last.FT,
                  ", last.harvest=", last.harvest, ", max.window.size=", max.window))
     
@@ -493,7 +499,12 @@ fwrite(out.wide %>% filter(ril_code %in% c("B73","HP301", pop.table$parent)), ex
     # read in kinship:
     # kinship was calculated in GAPIT (maf filter 0.01) based on public genotype data from 
     # ZeaGBSv27_publicSamples_imputedV5_AGPv4-181023.vcf.gz (https://datacommons.cyverse.org/browse/iplant/home/shared/panzea/genotypes/GBS/v27)
-    preK <- fread("NAM.GAPIT.Kin.VanRaden.csv", 
+    
+    # First, need to re-combine file parts in command line with:
+    # cat NAM.GAPIT.Kin.VanRaden.csv.tar.gz.part* > NAM.GAPIT.Kin.VanRaden.csv.tar.gz
+    # tar -xzvf NAM.GAPIT.Kin.VanRaden.csv.tar.gz
+    
+    preK <- fread("data/NAM.GAPIT.Kin.VanRaden.csv", 
                   data.table=F, stringsAsFactors = F) %>%
       rename(taxa=Taxa)
     for(p in unique(pop.table$number)) {
@@ -528,7 +539,7 @@ fwrite(out.wide %>% filter(ril_code %in% c("B73","HP301", pop.table$parent)), ex
     # run CERIS first:
 if(!CERIS.done) {
   # read in geno with ril names in order:
-  geno <- fread(file="NAM.GD.hidensity.matchY.txt", select=1)
+  geno <- fread("data/NAM.matchY.txt")
   taxa <- geno$Taxa
   rm(geno)
   
@@ -823,9 +834,12 @@ if(!CERIS.done) {
         }
 
     }
-        
+    
+
     # Run ASREML:
-    # ASREML code is:
+    # file is asreml_1to3.as
+    
+    # general ASREML code is:
     # ../../../asreml.pop$J.grm !NSD 
     # asreml_pop$J_fold$K_rep$1.csv !SKIP 1 !MAXIT 10000 # should be 10000 # run job as: -R asreml_pop_rep.as repnum
     # !ROWFAC env_code !COLFAC Genotype
@@ -959,7 +973,7 @@ if(!CERIS.done) {
       if(incl.precip=="no.precip") {exp_pop_dir <- paste0(exp_trait_dir, "whole_pop_no_precip", "/")} # make no precip directory
       if (!dir.exists(exp_pop_dir))  { dir.create(exp_pop_dir)};# make directory
       
-      print(paste0("1 to 2 for ", trait, " for the whole population, with parameters: line.outlier.filter=", line.outlier.filter,
+      print(paste0("1 to 2 for ", trait, ", with parameters: line.outlier.filter=", line.outlier.filter,
                    ", filter.less.than=",filter.less.than,", min.window.size=", min.window.size, ", last.FT=",last.FT,
                    ", last.harvest=", last.harvest, ", max.window.size=", max.window))
       
@@ -1109,6 +1123,7 @@ if(!CERIS.done) {
       }
       
       # Now, run ASREML
+      # using code asreml_1to2.as
       
       CERIS.done <- TRUE # use to determine if CERIS already run before FRgBLUP
       
@@ -1363,7 +1378,7 @@ if(!CERIS.done) {
       # 4. Repeat until each environment has been in the testing set.
       # 5. Repeat 50x for each environment left out.
       
-      source("genomic_prediction_functions.R")
+      source("subfunctions/genomic_prediction_functions.R")
       
       # This is designed for 2 folds-- split 50/50 training/testing
       nfolds <- 2
@@ -1379,7 +1394,7 @@ if(!CERIS.done) {
       
       # Run CERIS itself- - - -
       # read in geno with ril names in order:
-      geno <- fread(file="NAM.GD.hidensity.matchY.txt", select=1)
+      geno <- fread("data/NAM.matchY.txt")
       taxa <- geno$Taxa
       rm(geno)
       
@@ -1574,220 +1589,14 @@ if(!CERIS.done) {
         }
       }
       
-      # read in geno with ril names in order:
-      geno <- fread(file="NAM.GD.hidensity.matchY.txt", select=1)
-      taxa <- geno$Taxa
-      rm(geno)
-      
-      lInd <- which(colnames(exp_traits) == 'ril_code'); 
-      eInd <- which(colnames(exp_traits) == 'env_code');
-      exp_prepop_dir <- paste0(exp_dir, "UEUG.1to4.v4/"); if (!dir.exists(exp_prepop_dir))  { dir.create(exp_prepop_dir, recursive=T)};
-      # exp_pop_dir <- paste0(exp_prepop_dir, "whole_pop/"); if (!dir.exists(exp_pop_dir))  { dir.create(exp_pop_dir, recursive = T)};
-      if(incl.precip=="no.precip") {exp_prepop_dir <- paste0(exp_dir, "UEUG.1to4.v4_no_precip", "/")} # make no precip directory
-      if (!dir.exists(exp_prepop_dir))  { dir.create(exp_prepop_dir, recursive=T)};
-      
-      #### Do you want to leave one environment out while calculating correlations?
-      LOO_env <- 0; ### leave as 0 here because I already manually left one out
-      
-      # set param for graphing:
-      col_wdw <- 25;
-      col_palette <- diverge_hcl(col_wdw + 1, h = c(260, 0), c = 100, l = c(50, 90), power = 1) # this function makes a diverging color palette
-      
-      print(paste0("1 to 4 v4 for the whole population, rrBLUP within families, with parameters: line.outlier.filter=", line.outlier.filter,
-                   ", filter.less.than=",filter.less.than,", min.window.size=", min.window.size, ", last.FT=",last.FT,
-                   ", last.harvest=", last.harvest, ", max.window.size=", max.window))
-      
-      
-      
-      for (i in rep.num) {
-        
-        # first, make folds:
-        # make random folds for this rep, across all subpops:
-        taxa.table <- as.tibble(taxa)
-        colnames(taxa.table) <- c("value")
-        taxa.table$obs.id <- 1:length(taxa)
-        taxa.table <- left_join(taxa.table, exp_traits, by=c("value"="ril_code")) %>%
-          select(value, obs.id, pop_code) %>%
-          distinct
-        #make the folds--
-        # for any number of folds:
-        myF <- vector("list", nfolds)
-        # preF <- vector("list", nfolds)
-        for(subpop in unique(exp_traits$pop_code)) {
-          # for(subpop in pop.table$number[c(1,6)]) {
-          # get the obs id's for this pop:
-          pop.ids <- taxa.table %>%
-            filter(pop_code==subpop) %>%
-            select(obs.id)
-          
-          preF <- fold.maker.2(pop.ids$obs.id, nfolds)
-          # preF[[1]] <- pop.ids$obs.id[1:90]
-          # preF[[2]] <- pop.ids$obs.id[-c(1:90)]
-          for(j in c(1:nfolds)) {
-            myF[[j]] <- c(myF[[j]], preF[[j]])
-          }
-        }
-        
-        # get optimal windows and slope + intercept, for each trait x fold x environment:
-        output.results <- vector("list", 
-                                 length(c(FT.traits, harvest.traits))*nrow(pop.table)*length(all_env_codes))
-        n <- 1
-        for(trait in c(FT.traits, harvest.traits)) {
-          # for(trait in c("ERN")) {
-          tInd <- which(colnames(exp_traits) == trait);
-          exp_pop_dir <- paste0(exp_prepop_dir, trait, "/"); if (!(dir.exists(exp_pop_dir))) { dir.create(exp_pop_dir, recursive=T)};
-          if(!dir.exists(paste0(exp_pop_dir, "/whole_pop/"))) {dir.create(paste0(exp_pop_dir, "/whole_pop/"), recursive=T)}
-          current.trait <- trait
-          
-          for(env_num in seq_along(all_env_codes)) {
-            current.env <- all_env_codes[env_num] # set current environment
-            
-            for(fold in c(1:nfolds)) {
-              
-              # pull training data
-              exp_trait_trn <- exp_traits[exp_traits$env_code!=current.env,c(lInd, eInd, tInd)]; ### make sure the colname order is line env trait
-              exp_trait_trn <- exp_trait_trn[!(exp_trait_trn$ril_code %in% taxa[myF[[fold]]]),]
-              colnames(exp_trait_trn)[ncol(exp_trait_trn)] <- 'Yobs'; # rename phenotype data column as Yobs
-              
-              # also pull testing data:
-              exp_trait_test <- exp_traits[exp_traits$env_code==current.env,c(lInd, eInd, tInd)]; ### make sure the colname order is line env trait
-              exp_trait_test <- exp_trait_test[(exp_trait_test$ril_code %in% taxa[myF[[fold]]]),]; # filter by fold
-              colnames(exp_trait_test)[ncol(exp_trait_test)] <- 'Yobs'; # rename phenotype data column as Yobs
-              
-              # skip this environment if there is no testing data in this fold:
-              if(sum(!(is.na(exp_trait_test$Yobs)))==0) {next}
-              
-              # remove missing values--negative is ok though
-              exp_trait_trn <- exp_trait_trn[!is.na(exp_trait_trn$Yobs),];
-              # How many observations are there per pedigree?
-              obs_lne_n <- aggregate(Yobs ~ ril_code, data = exp_trait_trn, length);
-              # find lines with only one or two observations and remove them:
-              line_outlier <- obs_lne_n$ril_code[obs_lne_n$Yobs < line.outlier.filter]
-              exp_trait_trn <- exp_trait_trn[!(exp_trait_trn$ril_code %in% line_outlier),]
-              line_codes <- unique(exp_trait_trn$ril_code); # pull unique line codes
-              
-              # and pull the training data as a vector only:
-              current.data <- exp_trait_trn[,c(colnames(exp_trait_trn)=="Yobs")]
-              
-              # find mean value for each environment: 
-              env_mean_trait_0_trn <- na.omit(aggregate(x = exp_trait_trn$Yobs, by = list(env_code = exp_trait_trn$env_code),
-                                                        mean, na.rm = T));
-              colnames(env_mean_trait_0_trn)[2] <- 'meanY';
-              env_mean_trait_trn <- env_mean_trait_0_trn[order(env_mean_trait_0_trn$meanY),]; # sort by mean phenotype value
-              
-              # don't need this section for 1->4:
-              # env_mean_trait_0_test <- na.omit(aggregate(x = exp_trait_test$Yobs, by = list(env_code = exp_trait_test$env_code),
-              #                                       mean, na.rm = T));
-              # colnames(env_mean_trait_0_test)[2] <- 'meanY';
-              # env_mean_trait_test <- env_mean_trait_0_test
-              
-              # Perform exhaustive search in training set from WHOLE NAM pop, with 1 environment left out, for optimal window and environmental parameter to use
-              Exhaustive_search_full(env_mean_trait_trn, PTT_PTR, searching_daps, 
-                                     exp_pop_dir=paste0(exp_pop_dir,"whole_pop/"),
-                                     current.data,
-                                     trait,
-                                     searching_daps, searching_daps, LOO_env, min.window.size = min.window.size)
-              
-              # need to read in default output and rename them:
-              pop_cor_file.old <- paste(exp_pop_dir,'whole_pop/', trait, '_', nrow(env_mean_trait_trn), 'Envs_PTTPTR_', LOO_env, 'LOO_cor_whole_pop', sep = '');
-              pop_pval_file.old <- paste(exp_pop_dir, 'whole_pop/',trait, '_', nrow(env_mean_trait_trn), 'Envs_PTTPTR_', LOO_env, 'LOO_P_whole_pop', sep = '');
-              
-              pop_cor <- fread(pop_cor_file.old)
-              pop_pval <- fread(pop_pval_file.old) 
-              
-              pop_cor_file <- paste(exp_pop_dir, 'whole_pop/', trait, '_UEUG.1to4.no', current.env,'.fold', fold, ".rep", i, '_cor_whole_pop', sep = '')
-              fwrite(pop_cor, pop_cor_file, sep="\t")
-              
-              pop_pval_file <-paste(exp_pop_dir, 'whole_pop/', trait, '_UEUG.1to4.no',current.env,'.fold', fold, ".rep", i, '_P_whole_pop', sep = '')
-              fwrite(pop_pval, pop_pval_file, sep="\t")
-              
-              # tidy up:
-              file.remove(pop_cor_file.old, pop_pval_file.old) 
-              rm(pop_cor, pop_pval)
-              
-              # filter windows by established criteria:
-              search.results <- fread(pop_cor_file)%>%
-                select(-starts_with("nR")) # don't need the negative version
-              search.results <- search.results %>%
-                tidyr::gather(key="Parameter", value="Corr", -Day_x, -Day_y, -window)
-              
-              search.results <- search.results %>%
-                filter(window >= min.window.size) %>% # i < j-5
-                filter(window <= max.window)
-              
-              if(trait %in% FT.traits) {
-                search.results <- search.results %>%
-                  filter(Day_y <= last.FT) # last possible day for FT traits = 55
-              } else if (trait %in% harvest.traits) {
-                search.results <- search.results %>%
-                  filter(Day_y <= last.harvest) # last possible day for harvest traits
-              } else (warning("trait not in FT or harvest traits"))
-              
-              # Only now choose the remaining window with the best corr:
-              search.results <- search.results <- search.results %>%
-                filter(abs(Corr)==max(abs(Corr), na.rm = T))
-              
-              # if there are ties, just pick the top one in the table.
-              search.results <- search.results[1,]%>%
-                mutate(trait=trait)
-              
-              # output results:
-              output.results[[n]] <- cbind(testing.env=current.env,rep=i, fold=fold, search.results)
-              print(output.results[[n]])
-              
-              maxR_dap1 <- search.results$Day_x;
-              maxR_dap2 <- search.results$Day_y;
-              kPara_Name <- search.results$Parameter;
-              kPara_Name <- gsub("R_", "", kPara_Name)
-              PTT_PTR_ind <-  which(colnames(PTT_PTR) == kPara_Name); ## DL -> 5, GDD -> 6; PTT -> 7; PTR -> 8; PTD1 -> 8, PTD2 -> 9, PTS -> 10
-              
-              # Make output file containing the slopes and intercepts from the linear models for each line across environments
-              Slope_Intercept(maxR_dap1, maxR_dap2, env_mean_trait_trn, PTT_PTR, exp_trait_trn, line_codes, paste0(exp_pop_dir,"whole_pop/"), PTT_PTR_ind, 
-                              filter.less.than-1); # do filtering for number of observations here
-              # read file in and rename it:
-              slope_file.old <-paste0(exp_pop_dir,"whole_pop/Intcp_Slope")
-              pop_slope <- fread(slope_file.old)
-              slope_file <- paste0(exp_pop_dir,"whole_pop/", trait, "_UEUG.1to4.no", current.env,".fold", fold, ".rep", i, "_Intcp_Slope")
-              fwrite(pop_slope,slope_file, sep="\t")
-              
-              # tidy up:
-              file.remove(slope_file.old) 
-              rm(pop_slope)
-              
-              n <- n+1 # increase iterator
-            }
-            
-          }
-        }
-        # output windows: 
-        opt.windows <- do.call("rbind", output.results)
-        if (incl.precip=="no.precip"){
-          fwrite(opt.windows, paste0("NAM_BLUE/UEUG.1to4.v4_no_precip/UEUG.1to4_auto.optimal.parameters.whole_pop.rep",i, ".csv"))
-          
-        } else {
-          fwrite(opt.windows, paste0("NAM_BLUE/UEUG.1to4.v4/UEUG.1to4_auto.optimal.parameters.whole_pop.rep",i, ".csv"))
-          
-        }
-        
-      
-      
-      if(predict.type=="within.pop") {
+  # Prep and run ASREML
         if(incl.precip=="no.precip") {
           temp.dir <- paste(exp_dir, "FR.UEUG.1to4.pop_no_precip", sep=""); if (!dir.exists(temp.dir))  { dir.create(temp.dir)};
         } else {
           temp.dir <- paste(exp_dir, "FR.UEUG.1to4.pop", sep=""); if (!dir.exists(temp.dir))  { dir.create(temp.dir)};
         }
-      } else if (predict.type=="across.pop") {
-        if(incl.precip=="no.precip") {
-          temp.dir <- paste(exp_dir, "FR.UEUG.1to4.whole_no_precip", sep=""); if (!dir.exists(temp.dir))  { dir.create(temp.dir)};
-        } else {
-          temp.dir <- paste(exp_dir, "FR.UEUG.1to4.whole", sep=""); if (!dir.exists(temp.dir))  { dir.create(temp.dir)};
-        }
-      }
+       
 
-      print(paste0("FR-gBLUP 1 to 4 for the whole population, with parameters: line.outlier.filter=", line.outlier.filter,
-                   ", filter.less.than=",filter.less.than,", min.window.size=", min.window.size, ", last.FT=",last.FT,
-                   ", last.harvest=", last.harvest, ", max.window.size=", max.window))
       for (i in rep.num){
         if(CERIS.done) { # if CERIS-JGRA already run for 1->4, need to read in: optimal window, which line in which fold
           # first, read in folds:
@@ -1809,7 +1618,6 @@ if(!CERIS.done) {
           }
           stopifnot(sum(taxa[setdiff(1:length(taxa), c(myF[[1]], myF[[2]]))] %in% exp_traits$ril_code)==0) # check that everything with a phenotype is in here
           stopifnot(length(intersect(myF[[1]], myF[[2]]))==0) # check that no lines are in both folds
-          
           
         }   
         # Now, read in optimal windows:
@@ -1954,6 +1762,9 @@ if(!CERIS.done) {
         }
         rm(EC.table)
       }
+      
+      
+      # Run ASREML with asreml_1to4_fold1_full_rep.as and asreml_1to4_fold2_full_rep.as
       
       # Compile FR 1->4 -- -- -- - --- -
       
