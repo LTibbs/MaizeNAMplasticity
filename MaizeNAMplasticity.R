@@ -90,9 +90,6 @@ if(incl.precip=="no.precip") {
     select(-PRECIP, -PET, -H20.balance)
 }
 
-# TO DO: add files to GitHub------------------------
-# Also: whatever "data.join" is that was then used to remove outliers; NAM.population.list, sub_funcs ...
-
 exp_traits_file <- paste(exp_dir, 'traits_ori_NAM', sep = ''); 
 exp_fnd_file <- paste(exp_dir, 'traits_ori_FND', sep='')
 
