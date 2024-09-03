@@ -148,7 +148,7 @@ pop.table <- fread("NAM.population.list.txt", sep="\t", data.table=F)
 # excluding "env" and "family" from the model because
 # I'm interested in those things and don't want to average them out!
 library(lme4)
-BLUE.data  <- fread("NAM/traits_ori_NAM_no.outliers") %>% 
+BLUE.data  <- fread("traits_ori_NAM_no.outliers") %>% 
   mutate(rep=paste(field, rep, sep="_"), # make rep etc unique within each field so no need to nest terms in model (for efficiency)
          pblock=paste(rep, pblock, sep="_"),
          block=paste(pblock, block, sep="_"),
@@ -2105,4 +2105,52 @@ for(my.trait in c(FT.traits, harvest.traits)) {
         pivot_wider(names_from=Trait, values_from=env.mean)
       plot.pc.mean.traits <- prcomp(na.omit(pc.mean.traits[,-1]), center=T, scale=T)$rotation
       
-      
+#  Figure 1 --------------------------------------------------------------------- 
+# make tables with trait types
+trait.type.tibble <- tibble(Trait=c("ASI", "CD", "CL", "CM", "DTA", "DTS", 
+                                      "EH", "EM", "ERN", "KN", "KPR", "TKW",
+                                      "LL", "LW", "PH", "T20KW", "TPBN", "TL", "ULA"),
+                              Trait.Type=c("Flowering Time", "Yield", "Yield", "Yield","Flowering Time", "Flowering Time", 
+                                           "Architecture", "Yield", "Yield", "Yield", "Yield","Yield",
+                                           "Architecture", "Architecture", "Architecture",
+                                           "Yield", "Architecture", "Architecture", "Architecture"),
+                              Trait.Name=c("Anthesis-Silking Interval", "Cob Diameter", "Cob Length", "Cob Mass",
+                                           "Days to Anthesis", "Days to Silking", 
+                                           "Ear Height", "Ear Mass", "Ear Row Number", 
+                                           "Kernel Number", "Kernels per Row",
+                                           "Total Kernel Weight", "Leaf Length", 
+                                           "Leaf Width", "Plant Height", "Weight of 20 Kernels",
+                                           "Tassel Branch Number", "Tassel Length", "Upper Leaf Angle"))
+  trait.type.tibble$Trait.Type <- factor(trait.type.tibble$Trait.Type, 
+                                         levels=c("Flowering Time", "Architecture", "Yield"))
+  # look at optimal param across whole NAM
+  optimal.param <- fread(paste0(exp_dir, "CERES.auto.optimal.parameters.whole_pop.txt"), sep="\t", data.table = F)
+
+segment.data <- optimal.param %>%
+    mutate(my.color=ifelse(Parameter %in% c("R_DL"), "yellow",
+                           ifelse(Parameter %in% c("R_PRECIP"), "blue",
+                                  ifelse(Parameter %in% c("R_GDD", "R_DTR"), "red",
+                                         ifelse(Parameter %in% c("R_PTR", "R_PTD1", "R_PTD2", "R_PTS"), "orange",
+                                                ifelse(Parameter %in% c("R_PET"), "brown", NA)))))) %>%
+    mutate(Param.type=ifelse(Parameter %in% c("R_DL"), "Day Length",
+                             ifelse(Parameter %in% c("R_PRECIP"), "Precip",
+                                    ifelse(Parameter %in% c("R_GDD", "R_DTR"), "Temperature",
+                                           ifelse(Parameter %in% c("R_PTR", "R_PTD1", "R_PTD2", "R_PTS"), "Temp and Day Length",
+                                                  ifelse(Parameter %in% c("R_PET"), "Precip, Temp, and DL", NA)))))) %>%
+    arrange(Day_x) %>%
+    mutate(order=row_number())
+  segment.data <- left_join(segment.data, trait.type.tibble,by=c("trait"="Trait"))
+
+# Plot chosen windows
+  ggplot(data=segment.data, aes(x=Day_x, y=order)) +
+    geom_segment(size=2, aes(xend=Day_y, yend=order, color=Param.type)) +
+    geom_text(aes(label=Trait.Name, x=Day_x-.3, y=order+.1, hjust=1, vjust=0.5)) +
+    scale_color_manual(values=c("Day Length"="yellow",
+                                "Precip"="blue",
+                                "Temperature"="red",
+                                "Temp and Day Length"="orange",
+                                "Precip, Temp, and DL"="brown")) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position="none")+
+    scale_x_continuous(breaks=c(0,10,20,30,40,50,60,70,80,90,100), expand=expansion(add=c(25, 10)))  
+
